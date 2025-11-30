@@ -12,10 +12,6 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 
 
 load_dotenv()
-
-
-
-
 app = FastAPI()
 
 
@@ -35,13 +31,14 @@ vector_store = PineconeVectorStore(
     embedding=embeddings
 )
 
-
-
+# PaddleOCR for Document Extraction
 
 paddle_ocr = PPStructureV3(
     use_doc_orientation_classify=False,
     use_doc_unwarping=False
 )
+
+# Text Splitter
 
 splitter = RecursiveCharacterTextSplitter(
                 separators=["###", "\n\n", " "],
@@ -50,11 +47,19 @@ splitter = RecursiveCharacterTextSplitter(
             )
 
 
+
+
+# Helper Function to extract text, tables, and markdown from image bytes using PaddleOCR
+
+
 def extract_with_paddleocr(image_bytes):
     image = Image.open(io.BytesIO(image_bytes))
+    image.thumbnail((1800, 1800))
     temp_path = "temp_image.png"
     image.save(temp_path)
+    print("OCR start")
     output = paddle_ocr.predict(input=temp_path)
+    print("OCR done")
     extracted = {
         "text": [],
         "tables": [],
@@ -80,6 +85,10 @@ def extract_with_paddleocr(image_bytes):
 
     return extracted
 
+
+
+
+# API Endpoints
 
 
 @app.post("/upload-image/")
@@ -130,17 +139,10 @@ async def upload_image_only(file: UploadFile = File(...)):
 
 @app.get("/get-answer/")
 async def get_answer(query: str):
-    try:
-        similar_docs = vector_store.similarity_search(query, k=3)
-
-        prompt = f"""You are an AI assistant that helps users by providing information based on the following context:\n\n{similar_docs}\n\nAnswer the following question:\n{query}"""
-
-        answer = llm.invoke(prompt).content
-
-        return {
-            "query": query,
-            "answer": answer,
-        }
-
-    except Exception as e:
-        return {"error": str(e)}
+    similar_docs = vector_store.similarity_search(query, k=3)
+    prompt = f"""You are an AI assistant that helps users by providing information based on the following context:\n\n{similar_docs}\n\nAnswer the following question:\n{query}"""
+    answer = llm.invoke(prompt).content
+    return {
+        "query": query,
+        "answer": answer,
+    }
